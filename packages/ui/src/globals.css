@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Primary - Indigo */
+    --primary-50: 238 242 255;
+    --primary-100: 224 231 255;
+    --primary-200: 199 210 254;
+    --primary-300: 165 180 252;
+    --primary-400: 129 140 248;
+    --primary-500: 99 102 241;
+    --primary-600: 79 70 229;
+    --primary-700: 67 56 202;
+    --primary-800: 55 48 163;
+    --primary-900: 49 46 129;
+
+    /* Accent - Emerald */
+    --accent-50: 236 253 245;
+    --accent-100: 209 250 229;
+    --accent-200: 167 243 208;
+    --accent-300: 110 231 183;
+    --accent-400: 52 211 153;
+    --accent-500: 16 185 129;
+    --accent-600: 5 150 105;
+    --accent-700: 4 120 87;
+    --accent-800: 6 95 70;
+    --accent-900: 6 78 59;
+
+    /* Semantic */
+    --income: 16 185 129;
+    --expense: 244 63 94;
+    --warning: 245 158 11;
+    --info: 59 130 246;
+
+    /* Slate */
+    --slate-50: 248 250 252;
+    --slate-100: 241 245 249;
+    --slate-200: 226 232 240;
+    --slate-300: 203 213 225;
+    --slate-400: 148 163 184;
+    --slate-500: 100 116 139;
+    --slate-600: 71 85 105;
+    --slate-700: 51 65 85;
+    --slate-800: 30 41 59;
+    --slate-900: 15 23 42;
+  }
+
+  * {
+    @apply border-slate-200;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Tabular numbers for financial data */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* Income/Expense colors */
+  .text-income {
+    color: rgb(var(--income));
+  }
+
+  .text-expense {
+    color: rgb(var(--expense));
+  }
+
+  .bg-income {
+    background-color: rgb(var(--income));
+  }
+
+  .bg-expense {
+    background-color: rgb(var(--expense));
+  }
+
+  /* Primary colors */
+  .bg-primary-50 { background-color: rgb(var(--primary-50)); }
+  .bg-primary-100 { background-color: rgb(var(--primary-100)); }
+  .bg-primary-500 { background-color: rgb(var(--primary-500)); }
+  .bg-primary-600 { background-color: rgb(var(--primary-600)); }
+  .bg-primary-700 { background-color: rgb(var(--primary-700)); }
+
+  .text-primary-500 { color: rgb(var(--primary-500)); }
+  .text-primary-600 { color: rgb(var(--primary-600)); }
+  .text-primary-700 { color: rgb(var(--primary-700)); }
+
+  .ring-primary-500 { --tw-ring-color: rgb(var(--primary-500)); }
+
+  .shadow-primary-500\/25 {
+    --tw-shadow-color: rgb(var(--primary-500) / 0.25);
+  }
+}

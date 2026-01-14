@@ -1,0 +1,25 @@
+@import '@countin/ui/globals.css';
+
+/* Additional app-specific styles */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--slate-100));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--slate-300));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--slate-400));
+}

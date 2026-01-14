@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Tenant (Organization)
+// ═══════════════════════════════════════════════════════════════
+model Tenant {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  type        String     @default("NONPROFIT") // NONPROFIT, FORPROFIT, SOLE_PROPRIETOR, SOCIAL_ENTERPRISE
+  plan        String     @default("FREE") // FREE, LIGHT, STANDARD, PRO
+  trialEndsAt DateTime?
+  settings    String? // JSON string
+  logo        String?
+
+  users        TenantUser[]
+  transactions Transaction[]
+  accounts     Account[]
+  projects     Project[]
+  documents    Document[]
+  budgets      Budget[]
+  fundSources  FundSource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ═══════════════════════════════════════════════════════════════
+// User
+// ═══════════════════════════════════════════════════════════════
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  avatar        String?
+  emailVerified DateTime?
+
+  tenants TenantUser[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TenantUser {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String
+  role     String @default("MEMBER") // OWNER, ADMIN, MEMBER, VIEWER
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Account (Chart of Accounts)
+// ═══════════════════════════════════════════════════════════════
+model Account {
+  id          String  @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  type        String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  category    String?
+  description String?
+  isSystem    Boolean @default(false)
+  isActive    Boolean @default(true)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  budgetItems  BudgetItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Project
+// ═══════════════════════════════════════════════════════════════
+model Project {
+  id           String    @id @default(cuid())
+  tenantId     String
+  name         String
+  description  String?
+  code         String?
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String    @default("ACTIVE") // PLANNING, ACTIVE, COMPLETED, CANCELLED
+  budgetAmount Decimal?  @default(0)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  budgets      Budget[]
+  documents    Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fund Source (for Nonprofit)
+// ═══════════════════════════════════════════════════════════════
+model FundSource {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  type        String    @default("OTHER") // GOVERNMENT, CORPORATE, FOUNDATION, DONATION, SELF, OTHER
+  grantor     String?
+  amount      Decimal   @default(0)
+  usedAmount  Decimal   @default(0)
+  startDate   DateTime?
+  endDate     DateTime?
+  description String?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Transaction
+// ═══════════════════════════════════════════════════════════════
+model Transaction {
+  id          String   @id @default(cuid())
+  tenantId    String
+  date        DateTime
+  type        String // INCOME, EXPENSE, TRANSFER
+  amount      Decimal
+  description String
+  memo        String?
+
+  accountId    String
+  account      Account     @relation(fields: [accountId], references: [id])
+  projectId    String?
+  project      Project?    @relation(fields: [projectId], references: [id])
+  fundSourceId String?
+  fundSource   FundSource? @relation(fields: [fundSourceId], references: [id])
+
+  attachments Attachment[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, date])
+  @@index([accountId])
+  @@index([projectId])
+  @@index([fundSourceId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Budget
+// ═══════════════════════════════════════════════════════════════
+model Budget {
+  id        String  @id @default(cuid())
+  tenantId  String
+  name      String
+  year      Int
+  projectId String?
+  status    String  @default("DRAFT") // DRAFT, APPROVED, ARCHIVED
+
+  items BudgetItem[]
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([projectId])
+}
+
+model BudgetItem {
+  id            String  @id @default(cuid())
+  budgetId      String
+  accountId     String?
+  category      String
+  plannedAmount Decimal @default(0)
+  description   String?
+  sortOrder     Int     @default(0)
+
+  budget  Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id])
+
+  @@index([budgetId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Document
+// ═══════════════════════════════════════════════════════════════
+model Document {
+  id         String  @id @default(cuid())
+  tenantId   String
+  title      String
+  type       String // BUSINESS_PLAN, SETTLEMENT, BUDGET_PLAN, MEETING_MINUTES, CONTRACT, PROPOSAL, REPORT, CUSTOM
+  status     String  @default("DRAFT") // DRAFT, REVIEW, APPROVED, ARCHIVED
+  content    String  @default("[]") // JSON array of blocks
+  projectId  String?
+  templateId String?
+  isTemplate Boolean @default(false)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([projectId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Attachment
+// ═══════════════════════════════════════════════════════════════
+model Attachment {
+  id       String @id @default(cuid())
+  filename String
+  fileUrl  String
+  fileSize Int
+  mimeType String
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+}
