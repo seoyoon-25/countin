@@ -75,6 +75,19 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Password Reset Token
+// ═══════════════════════════════════════════════════════════════
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expires   DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
 model TenantUser {
   id       String @id @default(cuid())
   tenantId String
