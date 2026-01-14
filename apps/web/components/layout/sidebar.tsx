@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@countin/utils';
 
 const navigation = [
@@ -15,7 +17,7 @@ const navigation = [
     ),
   },
   {
-    name: '거래 내역',
+    name: '거래내역',
     href: '/dashboard/transactions',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,7 +45,7 @@ const navigation = [
   },
   {
     name: '예산',
-    href: '/dashboard/budget',
+    href: '/dashboard/budgets',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -51,7 +53,7 @@ const navigation = [
     ),
   },
   {
-    name: '재원 관리',
+    name: '재원관리',
     href: '/dashboard/fund-sources',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,39 +94,65 @@ const bottomNavigation = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
-  return (
-    <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white border-r border-slate-200">
+  const sidebarContent = (
+    <>
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-slate-200">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary-600 rounded-xl flex items-center justify-center">
+          <motion.div
+            className="w-8 h-8 bg-primary-600 rounded-xl flex items-center justify-center"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
             <span className="text-white font-bold text-sm">C</span>
-          </div>
+          </motion.div>
           <span className="text-xl font-bold text-slate-900">CountIn</span>
         </Link>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-        {navigation.map((item) => {
+        {navigation.map((item, index) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
-            <Link
+            <motion.div
               key={item.name}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary-50 text-primary-600'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              )}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.05 }}
             >
-              {item.icon}
-              {item.name}
-            </Link>
+              <Link
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors relative',
+                  isActive
+                    ? 'text-primary-600'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                )}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeNav"
+                    className="absolute inset-0 bg-primary-50 rounded-xl"
+                    initial={false}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-3">
+                  {item.icon}
+                  {item.name}
+                </span>
+              </Link>
+            </motion.div>
           );
         })}
       </nav>
@@ -137,19 +165,66 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onClose}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors relative',
                 isActive
-                  ? 'bg-primary-50 text-primary-600'
+                  ? 'text-primary-600'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               )}
             >
-              {item.icon}
-              {item.name}
+              {isActive && (
+                <motion.div
+                  layoutId="activeNavBottom"
+                  className="absolute inset-0 bg-primary-50 rounded-xl"
+                  initial={false}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-3">
+                {item.icon}
+                {item.name}
+              </span>
             </Link>
           );
         })}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-white border-r border-slate-200">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Sidebar */}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden"
+            />
+
+            {/* Sidebar */}
+            <motion.aside
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="fixed inset-y-0 left-0 w-64 bg-white z-50 flex flex-col lg:hidden"
+            >
+              {sidebarContent}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
