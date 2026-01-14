@@ -6,6 +6,10 @@ import { z } from 'zod';
 const createTenantSchema = z.object({
   name: z.string().min(2, '조직명은 2자 이상이어야 합니다'),
   type: z.enum(['NONPROFIT', 'FORPROFIT', 'SOLE_PROPRIETOR', 'SOCIAL_ENTERPRISE']),
+  slug: z.string().min(2, 'URL 주소는 2자 이상이어야 합니다').regex(
+    /^[a-z0-9가-힣-]+$/,
+    'URL 주소는 영문 소문자, 숫자, 한글, 하이픈만 사용 가능합니다'
+  ).optional(),
 });
 
 // Generate a URL-safe slug from name
@@ -50,17 +54,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, type } = parsed.data;
+    const { name, type, slug: providedSlug } = parsed.data;
 
-    // Generate unique slug
-    let slug = generateSlug(name);
-    let slugExists = await prisma.tenant.findUnique({ where: { slug } });
-    let counter = 1;
+    // Generate or validate slug
+    let slug = providedSlug || generateSlug(name);
 
-    while (slugExists) {
-      slug = `${generateSlug(name)}-${counter}`;
-      slugExists = await prisma.tenant.findUnique({ where: { slug } });
-      counter++;
+    // Check if slug already exists
+    const slugExists = await prisma.tenant.findUnique({ where: { slug } });
+
+    if (slugExists) {
+      if (providedSlug) {
+        // User provided slug already exists
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'SLUG_EXISTS',
+              message: '이미 사용 중인 URL 주소입니다. 다른 주소를 입력해주세요.',
+            },
+          },
+          { status: 400 }
+        );
+      }
+      // Auto-generated slug exists, add counter
+      let counter = 1;
+      while (await prisma.tenant.findUnique({ where: { slug: `${slug}-${counter}` } })) {
+        counter++;
+      }
+      slug = `${slug}-${counter}`;
     }
 
     // Create tenant and associate user as owner

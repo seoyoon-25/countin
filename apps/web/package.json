@@ -16,6 +16,7 @@
     "@countin/utils": "workspace:*",
     "@hookform/resolvers": "^5.2.2",
     "bcryptjs": "^3.0.3",
+    "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.26.2",
     "lucide-react": "^0.562.0",
     "next": "14.2.3",
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@countin/tsconfig": "workspace:*",
     "@types/bcryptjs": "^3.0.0",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20.12.12",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
