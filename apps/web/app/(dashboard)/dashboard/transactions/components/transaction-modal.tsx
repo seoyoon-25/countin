@@ -21,6 +21,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@countin/ui';
+import { formatCurrency } from '@countin/utils';
 
 interface Account {
   id: string;
@@ -34,6 +35,15 @@ interface Project {
   name: string;
 }
 
+interface FundSource {
+  id: string;
+  name: string;
+  type: string;
+  amount: number;
+  usedAmount: number;
+  remainingAmount: number;
+}
+
 interface Transaction {
   id: string;
   date: string;
@@ -45,6 +55,8 @@ interface Transaction {
   account: Account;
   projectId?: string;
   project?: Project;
+  fundSourceId?: string;
+  fundSource?: FundSource;
 }
 
 interface TransactionModalProps {
@@ -53,6 +65,7 @@ interface TransactionModalProps {
   onSuccess: () => void;
   transaction?: Transaction | null;
   onDelete?: (transaction: Transaction) => void;
+  defaultType?: 'INCOME' | 'EXPENSE' | 'TRANSFER';
 }
 
 const transactionSchema = z.object({
@@ -68,6 +81,7 @@ const transactionSchema = z.object({
   memo: z.string().optional(),
   accountId: z.string().min(1, '계정과목을 선택해주세요'),
   projectId: z.string().optional(),
+  fundSourceId: z.string().optional(),
 });
 
 type TransactionFormData = z.infer<typeof transactionSchema>;
@@ -78,11 +92,13 @@ export function TransactionModal({
   onSuccess,
   transaction,
   onDelete,
+  defaultType = 'EXPENSE',
 }: TransactionModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [fundSources, setFundSources] = useState<FundSource[]>([]);
 
   const isEditing = !!transaction;
 
@@ -97,28 +113,35 @@ export function TransactionModal({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
-      type: 'EXPENSE',
+      type: defaultType,
       amount: '',
       description: '',
       memo: '',
       accountId: '',
       projectId: '',
+      fundSourceId: '',
     },
   });
 
   const selectedType = watch('type');
+  const selectedFundSourceId = watch('fundSourceId');
 
-  // Fetch accounts and projects
+  // Get selected fund source info
+  const selectedFundSource = fundSources.find((fs) => fs.id === selectedFundSourceId);
+
+  // Fetch accounts, projects, and fund sources
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [accountsRes, projectsRes] = await Promise.all([
+        const [accountsRes, projectsRes, fundSourcesRes] = await Promise.all([
           fetch('/api/accounts'),
           fetch('/api/projects'),
+          fetch('/api/fund-sources'),
         ]);
 
         const accountsData = await accountsRes.json();
         const projectsData = await projectsRes.json();
+        const fundSourcesData = await fundSourcesRes.json();
 
         if (accountsData.success) {
           setAccounts(accountsData.data || []);
@@ -126,6 +149,10 @@ export function TransactionModal({
 
         if (projectsData.success) {
           setProjects(projectsData.data || []);
+        }
+
+        if (fundSourcesData.success) {
+          setFundSources(fundSourcesData.data || []);
         }
       } catch (error) {
         console.error('Failed to fetch data:', error);
@@ -149,21 +176,23 @@ export function TransactionModal({
           memo: transaction.memo || '',
           accountId: transaction.accountId,
           projectId: transaction.projectId || '',
+          fundSourceId: transaction.fundSourceId || '',
         });
       } else {
         reset({
           date: new Date().toISOString().split('T')[0],
-          type: 'EXPENSE',
+          type: defaultType,
           amount: '',
           description: '',
           memo: '',
           accountId: '',
           projectId: '',
+          fundSourceId: '',
         });
       }
       setError(null);
     }
-  }, [open, transaction, reset]);
+  }, [open, transaction, reset, defaultType]);
 
   const onSubmit = async (data: TransactionFormData) => {
     setIsLoading(true);
@@ -178,6 +207,7 @@ export function TransactionModal({
         memo: data.memo || null,
         accountId: data.accountId,
         projectId: data.projectId || null,
+        fundSourceId: data.fundSourceId || null,
       };
 
       const url = isEditing
@@ -224,7 +254,7 @@ export function TransactionModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? '거래 수정' : '새 거래 추가'}</DialogTitle>
         </DialogHeader>
@@ -375,6 +405,36 @@ export function TransactionModal({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Fund Source (optional - for EXPENSE type) */}
+          {selectedType === 'EXPENSE' && fundSources.length > 0 && (
+            <div className="space-y-2">
+              <Label>재원 (선택)</Label>
+              <Select
+                value={watch('fundSourceId') || ''}
+                onValueChange={(value) => setValue('fundSourceId', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="재원을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">없음</SelectItem>
+                  {fundSources.map((fundSource) => (
+                    <SelectItem key={fundSource.id} value={fundSource.id}>
+                      {fundSource.name} (잔액: {formatCurrency(fundSource.remainingAmount)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedFundSource && (
+                <p className="text-xs text-slate-500">
+                  지원금액: {formatCurrency(selectedFundSource.amount)} /
+                  사용: {formatCurrency(selectedFundSource.usedAmount)} /
+                  잔액: {formatCurrency(selectedFundSource.remainingAmount)}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Memo (optional) */}
           <div className="space-y-2">

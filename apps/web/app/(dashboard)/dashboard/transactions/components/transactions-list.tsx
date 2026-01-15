@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, FileText, Download, FileSpreadsheet } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -16,18 +17,18 @@ import {
   TableHead,
   TableRow,
   TableCell,
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
   Badge,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@countin/ui';
 import { formatCurrency, formatDate } from '@countin/utils';
 import { useDebounce } from '@countin/hooks';
 import { TransactionModal } from './transaction-modal';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
 import { ToastContainer } from './toast-container';
+import { TransactionFilters, FilterState } from './transaction-filters';
 
 interface Account {
   id: string;
@@ -87,7 +88,35 @@ const listItemVariants = {
   },
 };
 
+// Highlight search text in string
+function HighlightText({ text, search }: { text: string; search: string }) {
+  if (!search || !text) return <>{text}</>;
+
+  const parts = text.split(new RegExp(`(${search})`, 'gi'));
+
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.toLowerCase() === search.toLowerCase() ? (
+          <mark
+            key={index}
+            className="bg-yellow-200 text-yellow-900 rounded px-0.5"
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 export function TransactionsList() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -96,8 +125,22 @@ export function TransactionsList() {
     totalPages: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  // Get initial values from URL
+  const initialFilters: FilterState = {
+    startDate: searchParams.get('startDate') || '',
+    endDate: searchParams.get('endDate') || '',
+    type: searchParams.get('type') || '',
+    accountId: searchParams.get('accountId') || '',
+    projectId: searchParams.get('projectId') || '',
+    minAmount: searchParams.get('minAmount') || '',
+    maxAmount: searchParams.get('maxAmount') || '',
+  };
+
+  const [filters, setFilters] = useState<FilterState>(initialFilters);
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const debouncedSearch = useDebounce(search, 300);
 
   // Modal states
@@ -108,6 +151,55 @@ export function TransactionsList() {
   const [deleteTransaction, setDeleteTransaction] = useState<Transaction | null>(null);
   const [deletedTransactions, setDeletedTransactions] = useState<DeletedTransaction[]>([]);
 
+  // Fetch accounts and projects for filters
+  useEffect(() => {
+    const fetchFilterData = async () => {
+      try {
+        const [accountsRes, projectsRes] = await Promise.all([
+          fetch('/api/accounts'),
+          fetch('/api/projects?includeAll=true'),
+        ]);
+
+        const accountsData = await accountsRes.json();
+        const projectsData = await projectsRes.json();
+
+        if (accountsData.success) {
+          setAccounts(accountsData.data || []);
+        }
+        if (projectsData.success) {
+          setProjects(projectsData.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch filter data:', error);
+      }
+    };
+
+    fetchFilterData();
+  }, []);
+
+  // Update URL when filters change
+  const updateURL = useCallback(
+    (newFilters: FilterState, newSearch: string, newPage: number) => {
+      const params = new URLSearchParams();
+
+      if (newSearch) params.set('search', newSearch);
+      if (newFilters.startDate) params.set('startDate', newFilters.startDate);
+      if (newFilters.endDate) params.set('endDate', newFilters.endDate);
+      if (newFilters.type) params.set('type', newFilters.type);
+      if (newFilters.accountId) params.set('accountId', newFilters.accountId);
+      if (newFilters.projectId) params.set('projectId', newFilters.projectId);
+      if (newFilters.minAmount) params.set('minAmount', newFilters.minAmount);
+      if (newFilters.maxAmount) params.set('maxAmount', newFilters.maxAmount);
+      if (newPage > 1) params.set('page', newPage.toString());
+
+      const queryString = params.toString();
+      router.push(`${pathname}${queryString ? `?${queryString}` : ''}`, {
+        scroll: false,
+      });
+    },
+    [pathname, router]
+  );
+
   const fetchTransactions = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -116,13 +208,14 @@ export function TransactionsList() {
         limit: pagination.limit.toString(),
       });
 
-      if (debouncedSearch) {
-        params.append('search', debouncedSearch);
-      }
-
-      if (typeFilter && typeFilter !== 'all') {
-        params.append('type', typeFilter);
-      }
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.type) params.append('type', filters.type);
+      if (filters.accountId) params.append('accountId', filters.accountId);
+      if (filters.projectId) params.append('projectId', filters.projectId);
+      if (filters.minAmount) params.append('minAmount', filters.minAmount);
+      if (filters.maxAmount) params.append('maxAmount', filters.maxAmount);
 
       const response = await fetch(`/api/transactions?${params}`);
       const data = await response.json();
@@ -136,16 +229,21 @@ export function TransactionsList() {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.limit, debouncedSearch, typeFilter]);
+  }, [pagination.page, pagination.limit, debouncedSearch, filters]);
 
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
 
-  // Reset page when filters change
+  // Reset page when filters or search change
   useEffect(() => {
     setPagination((prev) => ({ ...prev, page: 1 }));
-  }, [debouncedSearch, typeFilter]);
+    updateURL(filters, debouncedSearch, 1);
+  }, [debouncedSearch, filters, updateURL]);
+
+  const handleFilterChange = (newFilters: FilterState) => {
+    setFilters(newFilters);
+  };
 
   const handleOpenModal = (transaction?: Transaction) => {
     setEditingTransaction(transaction || null);
@@ -176,7 +274,6 @@ export function TransactionsList() {
       const data = await response.json();
 
       if (data.success) {
-        // Add to deleted transactions for undo
         setDeletedTransactions((prev) => [
           ...prev,
           { ...deleteTransaction, deletedAt: Date.now() },
@@ -222,6 +319,25 @@ export function TransactionsList() {
     setDeletedTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const handlePageChange = (newPage: number) => {
+    setPagination((prev) => ({ ...prev, page: newPage }));
+    updateURL(filters, debouncedSearch, newPage);
+  };
+
+  const handleExport = (format: 'xlsx' | 'csv') => {
+    const params = new URLSearchParams({ format });
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (filters.startDate) params.set('startDate', filters.startDate);
+    if (filters.endDate) params.set('endDate', filters.endDate);
+    if (filters.type) params.set('type', filters.type);
+    if (filters.accountId) params.set('accountId', filters.accountId);
+    if (filters.projectId) params.set('projectId', filters.projectId);
+    if (filters.minAmount) params.set('minAmount', filters.minAmount);
+    if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
+
+    window.open(`/api/export/transactions?${params}`, '_blank');
+  };
+
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'INCOME':
@@ -244,41 +360,71 @@ export function TransactionsList() {
     }
   };
 
+  // Check if any filter is active
+  const hasActiveFilters = useMemo(() => {
+    return (
+      debouncedSearch ||
+      filters.startDate ||
+      filters.endDate ||
+      filters.type ||
+      filters.accountId ||
+      filters.projectId ||
+      filters.minAmount ||
+      filters.maxAmount
+    );
+  }, [debouncedSearch, filters]);
+
   return (
     <>
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <CardTitle>거래 목록</CardTitle>
-            <Button onClick={() => handleOpenModal()}>
-              <Plus className="w-4 h-4 mr-2" />
-              거래 추가
-            </Button>
+            <div className="flex gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Download className="w-4 h-4 mr-2" />
+                    내보내기
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExport('xlsx')}>
+                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                    Excel (.xlsx)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport('csv')}>
+                    <FileText className="w-4 h-4 mr-2" />
+                    CSV (.csv)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button onClick={() => handleOpenModal()}>
+                <Plus className="w-4 h-4 mr-2" />
+                거래 추가
+              </Button>
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="적요, 메모로 검색..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mt-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="적요, 메모로 검색..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full sm:w-40">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="유형 필터" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="INCOME">수입</SelectItem>
-                <SelectItem value="EXPENSE">지출</SelectItem>
-                <SelectItem value="TRANSFER">이체</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="mt-4">
+            <TransactionFilters
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              accounts={accounts}
+              projects={projects}
+            />
           </div>
         </CardHeader>
 
@@ -303,24 +449,36 @@ export function TransactionsList() {
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 15 }}
               >
-                <svg
-                  className="w-16 h-16 mx-auto mb-4 text-slate-300"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                  />
-                </svg>
+                <FileText className="w-16 h-16 mx-auto mb-4 text-slate-300" />
               </motion.div>
-              <p className="text-slate-500 mb-4">아직 등록된 거래가 없습니다</p>
-              <Button onClick={() => handleOpenModal()}>
-                <Plus className="w-4 h-4 mr-2" />첫 거래 등록하기
-              </Button>
+              <p className="text-slate-500 mb-4">
+                {hasActiveFilters
+                  ? '검색 결과가 없습니다'
+                  : '아직 등록된 거래가 없습니다'}
+              </p>
+              {hasActiveFilters ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch('');
+                    setFilters({
+                      startDate: '',
+                      endDate: '',
+                      type: '',
+                      accountId: '',
+                      projectId: '',
+                      minAmount: '',
+                      maxAmount: '',
+                    });
+                  }}
+                >
+                  필터 초기화
+                </Button>
+              ) : (
+                <Button onClick={() => handleOpenModal()}>
+                  <Plus className="w-4 h-4 mr-2" />첫 거래 등록하기
+                </Button>
+              )}
             </motion.div>
           ) : (
             <>
@@ -361,9 +519,20 @@ export function TransactionsList() {
                                 {getTypeLabel(transaction.type)}
                               </Badge>
                               <span className="text-slate-900">
-                                {transaction.description}
+                                <HighlightText
+                                  text={transaction.description}
+                                  search={debouncedSearch}
+                                />
                               </span>
                             </div>
+                            {transaction.memo && debouncedSearch && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                <HighlightText
+                                  text={transaction.memo}
+                                  search={debouncedSearch}
+                                />
+                              </p>
+                            )}
                           </TableCell>
                           <TableCell className="text-slate-600">
                             {transaction.account.name}
@@ -401,12 +570,7 @@ export function TransactionsList() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        setPagination((prev) => ({
-                          ...prev,
-                          page: prev.page - 1,
-                        }))
-                      }
+                      onClick={() => handlePageChange(pagination.page - 1)}
                       disabled={pagination.page <= 1}
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -417,12 +581,7 @@ export function TransactionsList() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        setPagination((prev) => ({
-                          ...prev,
-                          page: prev.page + 1,
-                        }))
-                      }
+                      onClick={() => handlePageChange(pagination.page + 1)}
                       disabled={pagination.page >= pagination.totalPages}
                     >
                       <ChevronRight className="w-4 h-4" />

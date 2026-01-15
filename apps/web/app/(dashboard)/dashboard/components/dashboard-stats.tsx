@@ -1,54 +1,26 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardContent } from '@countin/ui';
+import { TrendingUp, TrendingDown, Wallet, FolderOpen } from 'lucide-react';
+import { Card, CardContent, Skeleton } from '@countin/ui';
 import { formatCurrency } from '@countin/utils';
 
-const stats = [
-  {
-    title: '이번 달 수입',
-    value: 12500000,
-    change: '+12.5%',
-    changeType: 'positive' as const,
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-  {
-    title: '이번 달 지출',
-    value: 8750000,
-    change: '-5.2%',
-    changeType: 'negative' as const,
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-      </svg>
-    ),
-  },
-  {
-    title: '잔액',
-    value: 45230000,
-    change: '+8.1%',
-    changeType: 'positive' as const,
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
-    title: '진행 중인 프로젝트',
-    value: 5,
-    isCount: true,
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-      </svg>
-    ),
-  },
-];
+interface StatsData {
+  income: {
+    amount: number;
+    change: number;
+  };
+  expense: {
+    amount: number;
+    change: number;
+  };
+  balance: {
+    amount: number;
+    change: number;
+  };
+  activeProjects: number;
+}
 
 const container = {
   hidden: { opacity: 0 },
@@ -66,6 +38,79 @@ const item = {
 };
 
 export function DashboardStats() {
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch('/api/dashboard/stats');
+        const data = await response.json();
+        if (data.success) {
+          setStats(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch dashboard stats:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <Skeleton className="w-10 h-10 rounded-xl" />
+                <Skeleton className="w-16 h-5" />
+              </div>
+              <div className="mt-4 space-y-2">
+                <Skeleton className="w-20 h-4" />
+                <Skeleton className="w-32 h-8" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  const statItems = [
+    {
+      title: '이번 달 수입',
+      value: stats?.income.amount || 0,
+      change: stats?.income.change || 0,
+      icon: <TrendingUp className="w-6 h-6" />,
+      colorClass: 'bg-emerald-100 text-emerald-600',
+    },
+    {
+      title: '이번 달 지출',
+      value: stats?.expense.amount || 0,
+      change: stats?.expense.change || 0,
+      icon: <TrendingDown className="w-6 h-6" />,
+      colorClass: 'bg-rose-100 text-rose-600',
+    },
+    {
+      title: '잔액',
+      value: stats?.balance.amount || 0,
+      change: stats?.balance.change || 0,
+      icon: <Wallet className="w-6 h-6" />,
+      colorClass: 'bg-blue-100 text-blue-600',
+    },
+    {
+      title: '진행 중인 프로젝트',
+      value: stats?.activeProjects || 0,
+      isCount: true,
+      icon: <FolderOpen className="w-6 h-6" />,
+      colorClass: 'bg-purple-100 text-purple-600',
+    },
+  ];
+
   return (
     <motion.div
       variants={container}
@@ -73,30 +118,25 @@ export function DashboardStats() {
       animate="show"
       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
     >
-      {stats.map((stat) => (
+      {statItems.map((stat) => (
         <motion.div key={stat.title} variants={item}>
           <Card className="hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
               <div className="flex items-start justify-between">
                 <motion.div
                   whileHover={{ scale: 1.1, rotate: 5 }}
-                  className={`p-2 rounded-xl ${
-                    stat.changeType === 'positive'
-                      ? 'bg-emerald-100 text-emerald-600'
-                      : stat.changeType === 'negative'
-                        ? 'bg-rose-100 text-rose-600'
-                        : 'bg-slate-100 text-slate-600'
-                  }`}
+                  className={`p-2 rounded-xl ${stat.colorClass}`}
                 >
                   {stat.icon}
                 </motion.div>
-                {stat.change && (
+                {!stat.isCount && stat.change !== undefined && (
                   <span
                     className={`text-sm font-medium ${
-                      stat.changeType === 'positive' ? 'text-emerald-600' : 'text-rose-600'
+                      stat.change >= 0 ? 'text-emerald-600' : 'text-rose-600'
                     }`}
                   >
-                    {stat.change}
+                    {stat.change >= 0 ? '+' : ''}
+                    {stat.change}%
                   </span>
                 )}
               </div>
@@ -108,7 +148,11 @@ export function DashboardStats() {
                   transition={{ delay: 0.2 }}
                   className="text-2xl font-bold text-slate-900 mt-1 tabular-nums"
                 >
-                  {stat.isCount ? stat.value : formatCurrency(stat.value)}
+                  {stat.isCount ? (
+                    <>{stat.value}개</>
+                  ) : (
+                    formatCurrency(stat.value)
+                  )}
                 </motion.p>
               </div>
             </CardContent>

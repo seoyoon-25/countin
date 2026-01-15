@@ -1,9 +1,6 @@
 import { auth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@countin/ui';
-import { formatCurrency } from '@countin/utils';
-import { DashboardStats } from './components/dashboard-stats';
-import { RecentTransactions } from './components/recent-transactions';
-import { QuickActions } from './components/quick-actions';
+import { DashboardContent } from './components/dashboard-content';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -32,22 +29,5 @@ export default async function DashboardPage() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">대시보드</h1>
-        <p className="text-slate-500 mt-1">회계 현황을 한눈에 확인하세요</p>
-      </div>
-
-      {/* Stats Grid */}
-      <DashboardStats />
-
-      {/* Recent Activity & Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RecentTransactions />
-        <QuickActions />
-      </div>
-    </div>
-  );
+  return <DashboardContent />;
 }

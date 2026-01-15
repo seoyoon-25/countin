@@ -45,6 +45,8 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const search = searchParams.get('search');
+    const minAmount = searchParams.get('minAmount');
+    const maxAmount = searchParams.get('maxAmount');
 
     const skip = (page - 1) * limit;
 
@@ -69,7 +71,20 @@ export async function GET(request: Request) {
         where.date.gte = new Date(startDate);
       }
       if (endDate) {
-        where.date.lte = new Date(endDate);
+        // Set to end of day for endDate
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.date.lte = end;
+      }
+    }
+
+    if (minAmount || maxAmount) {
+      where.amount = {};
+      if (minAmount) {
+        where.amount.gte = parseFloat(minAmount);
+      }
+      if (maxAmount) {
+        where.amount.lte = parseFloat(maxAmount);
       }
     }
 
@@ -246,35 +261,58 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create transaction
-    const transaction = await prisma.transaction.create({
-      data: {
-        tenantId,
-        date: new Date(date),
-        type,
-        amount,
-        description,
-        memo: memo || null,
-        accountId,
-        projectId: projectId || null,
-        fundSourceId: fundSourceId || null,
-      },
-      include: {
-        account: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            type: true,
+    // Use transaction to create and update fund source atomically
+    const transaction = await prisma.$transaction(async (tx) => {
+      // Create the transaction
+      const newTransaction = await tx.transaction.create({
+        data: {
+          tenantId,
+          date: new Date(date),
+          type,
+          amount,
+          description,
+          memo: memo || null,
+          accountId,
+          projectId: projectId || null,
+          fundSourceId: fundSourceId || null,
+        },
+        include: {
+          account: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              type: true,
+            },
+          },
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          fundSource: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-        project: {
-          select: {
-            id: true,
-            name: true,
+      });
+
+      // Update fund source usedAmount if fundSourceId is provided and type is EXPENSE
+      if (fundSourceId && type === 'EXPENSE') {
+        await tx.fundSource.update({
+          where: { id: fundSourceId },
+          data: {
+            usedAmount: {
+              increment: amount,
+            },
           },
-        },
-      },
+        });
+      }
+
+      return newTransaction;
     });
 
     return NextResponse.json({

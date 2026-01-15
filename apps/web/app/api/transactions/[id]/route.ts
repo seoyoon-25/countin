@@ -217,31 +217,70 @@ export async function PATCH(
     if (projectId !== undefined) updateData.projectId = projectId || null;
     if (fundSourceId !== undefined) updateData.fundSourceId = fundSourceId || null;
 
-    const transaction = await prisma.transaction.update({
-      where: { id },
-      data: updateData,
-      include: {
-        account: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            type: true,
+    // Use transaction for atomic updates
+    const transaction = await prisma.$transaction(async (tx) => {
+      const oldTransaction = existingTransaction;
+      const oldFundSourceId = oldTransaction.fundSourceId;
+      const oldAmount = Number(oldTransaction.amount);
+      const oldType = oldTransaction.type;
+
+      const newFundSourceId = fundSourceId !== undefined ? (fundSourceId || null) : oldFundSourceId;
+      const newAmount = amount !== undefined ? amount : oldAmount;
+      const newType = type !== undefined ? type : oldType;
+
+      // Revert old fund source usage if it was an EXPENSE with a fund source
+      if (oldFundSourceId && oldType === 'EXPENSE') {
+        await tx.fundSource.update({
+          where: { id: oldFundSourceId },
+          data: {
+            usedAmount: {
+              decrement: oldAmount,
+            },
+          },
+        });
+      }
+
+      // Update the transaction
+      const updatedTransaction = await tx.transaction.update({
+        where: { id },
+        data: updateData,
+        include: {
+          account: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              type: true,
+            },
+          },
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          fundSource: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-        project: {
-          select: {
-            id: true,
-            name: true,
+      });
+
+      // Apply new fund source usage if it's an EXPENSE with a fund source
+      if (newFundSourceId && newType === 'EXPENSE') {
+        await tx.fundSource.update({
+          where: { id: newFundSourceId },
+          data: {
+            usedAmount: {
+              increment: newAmount,
+            },
           },
-        },
-        fundSource: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
+        });
+      }
+
+      return updatedTransaction;
     });
 
     return NextResponse.json({
@@ -323,9 +362,24 @@ export async function DELETE(
       );
     }
 
-    // Delete the transaction
-    await prisma.transaction.delete({
-      where: { id },
+    // Delete the transaction and update fund source atomically
+    await prisma.$transaction(async (tx) => {
+      // Delete the transaction
+      await tx.transaction.delete({
+        where: { id },
+      });
+
+      // Revert fund source usage if the transaction was an EXPENSE with a fund source
+      if (existingTransaction.fundSourceId && existingTransaction.type === 'EXPENSE') {
+        await tx.fundSource.update({
+          where: { id: existingTransaction.fundSourceId },
+          data: {
+            usedAmount: {
+              decrement: Number(existingTransaction.amount),
+            },
+          },
+        });
+      }
     });
 
     return NextResponse.json({
