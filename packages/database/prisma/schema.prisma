@@ -142,16 +142,37 @@ model Project {
   endDate      DateTime?
   status       String    @default("ACTIVE") // PLANNING, ACTIVE, COMPLETED, CANCELLED
   budgetAmount Decimal?  @default(0)
+  managerId    String?   // 주 담당자
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   budgets      Budget[]
   documents    Document[]
+  members      ProjectMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([tenantId])
+  @@index([managerId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Project Member (부 담당자)
+// ═══════════════════════════════════════════════════════════════
+model ProjectMember {
+  id        String @id @default(cuid())
+  projectId String
+  userId    String
+  role      String @default("MEMBER") // MANAGER, MEMBER
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -271,6 +292,47 @@ model Document {
 
   @@index([tenantId])
   @@index([projectId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Transaction Classification Learning Data
+// ═══════════════════════════════════════════════════════════════
+model TransactionClassification {
+  id           String  @id @default(cuid())
+  tenantId     String
+  description  String  // 적요 (normalized)
+  accountId    String
+  projectId    String?
+  fundSourceId String?
+  confidence   Float   @default(1.0)
+  usageCount   Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, description])
+  @@index([tenantId])
+  @@index([description])
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Transaction Import Batch
+// ═══════════════════════════════════════════════════════════════
+model TransactionImportBatch {
+  id             String   @id @default(cuid())
+  tenantId       String
+  filename       String
+  bankType       String?
+  totalCount     Int
+  successCount   Int      @default(0)
+  failedCount    Int      @default(0)
+  status         String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  transactionIds String?  // JSON array of created transaction IDs
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 // ═══════════════════════════════════════════════════════════════

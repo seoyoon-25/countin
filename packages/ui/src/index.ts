@@ -82,6 +82,9 @@ export {
   TooltipProvider,
 } from './tooltip';
 
+// Progress
+export { Progress } from './progress';
+
 // Feedback
 export {
   Toast,
@@ -94,3 +97,16 @@ export {
   type ToastProps,
   type ToastActionElement,
 } from './toast';
+export {
+  AlertDialog,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from './alert-dialog';

@@ -11,6 +11,8 @@ import {
   Wallet,
   Edit,
   FileText,
+  User,
+  Users,
 } from 'lucide-react';
 import {
   Card,
@@ -34,6 +36,14 @@ interface Account {
   code: string;
   name: string;
   type: string;
+}
+
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  role: string;
 }
 
 interface Transaction {
@@ -60,6 +70,9 @@ interface Project {
   spentAmount: number;
   remainingAmount: number;
   progress: number;
+  managerId?: string | null;
+  manager?: Member | null;
+  members?: { userId: string; role: string; user?: Member }[];
   transactions: Transaction[];
   _count: {
     transactions: number;
@@ -219,25 +232,88 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       </div>
 
       {/* Project Info */}
-      {(project.description || project.startDate || project.endDate) && (
+      {(project.description || project.startDate || project.endDate || project.manager) && (
         <Card>
           <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              {project.description && (
-                <p className="text-slate-600 flex-1">{project.description}</p>
-              )}
-              {(project.startDate || project.endDate) && (
-                <div className="flex items-center gap-1.5 text-sm text-slate-500 shrink-0">
-                  <Calendar className="w-4 h-4" />
-                  <span>
-                    {project.startDate
-                      ? formatDate(new Date(project.startDate))
-                      : '미정'}
-                    {' ~ '}
-                    {project.endDate
-                      ? formatDate(new Date(project.endDate))
-                      : '미정'}
-                  </span>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                {project.description && (
+                  <p className="text-slate-600 flex-1">{project.description}</p>
+                )}
+                {(project.startDate || project.endDate) && (
+                  <div className="flex items-center gap-1.5 text-sm text-slate-500 shrink-0">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      {project.startDate
+                        ? formatDate(new Date(project.startDate))
+                        : '미정'}
+                      {' ~ '}
+                      {project.endDate
+                        ? formatDate(new Date(project.endDate))
+                        : '미정'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Manager & Members */}
+              {(project.manager || (project.members && project.members.length > 0)) && (
+                <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-slate-100">
+                  {/* Manager */}
+                  {project.manager && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                        {project.manager.avatar ? (
+                          <img
+                            src={project.manager.avatar}
+                            alt={project.manager.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <User className="w-4 h-4 text-slate-500" />
+                        )}
+                      </div>
+                      <div className="text-sm">
+                        <span className="text-slate-400">주 담당자:</span>{' '}
+                        <span className="font-medium text-slate-700">
+                          {project.manager.name}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Members */}
+                  {project.members && project.members.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex -space-x-2">
+                        {project.members.slice(0, 3).map((member) => (
+                          <div
+                            key={member.userId}
+                            className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center overflow-hidden"
+                            title={member.user?.name || ''}
+                          >
+                            {member.user?.avatar ? (
+                              <img
+                                src={member.user.avatar}
+                                alt={member.user.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <User className="w-4 h-4 text-slate-500" />
+                            )}
+                          </div>
+                        ))}
+                        {project.members.length > 3 && (
+                          <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-xs font-medium text-slate-600">
+                            +{project.members.length - 3}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-sm text-slate-500">
+                        부 담당자 {project.members.length}명
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -49,6 +49,13 @@ export async function GET(
             },
           },
         },
+        members: {
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+          },
+        },
       },
     });
 
@@ -65,6 +72,23 @@ export async function GET(
       );
     }
 
+    // Get manager and members info
+    const userIds = [
+      ...(project.managerId ? [project.managerId] : []),
+      ...project.members.map(m => m.userId),
+    ];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true, avatar: true },
+    });
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    const manager = project.managerId ? userMap.get(project.managerId) : null;
+    const membersWithInfo = project.members.map(m => ({
+      ...m,
+      user: userMap.get(m.userId),
+    }));
+
     // Calculate stats
     const income = project.transactions
       .filter((t) => t.type === 'INCOME')
@@ -75,10 +99,12 @@ export async function GET(
 
     const budgetAmount = project.budgetAmount ? Number(project.budgetAmount) : 0;
 
+    const { members, ...projectData } = project;
+
     return NextResponse.json({
       success: true,
       data: {
-        ...project,
+        ...projectData,
         budgetAmount,
         incomeAmount: income,
         expenseAmount: expense,
@@ -91,6 +117,8 @@ export async function GET(
           ...t,
           amount: Number(t.amount),
         })),
+        manager,
+        members: membersWithInfo,
       },
     });
   } catch (error) {
@@ -117,6 +145,8 @@ const updateProjectSchema = z.object({
   endDate: z.string().optional().nullable(),
   budgetAmount: z.number().min(0, '예산은 0 이상이어야 합니다').optional().nullable(),
   status: z.enum(['PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
+  managerId: z.string().optional().nullable(),
+  memberIds: z.array(z.string()).optional(),
 });
 
 export async function PATCH(
@@ -176,7 +206,7 @@ export async function PATCH(
       );
     }
 
-    const { name, code, description, startDate, endDate, budgetAmount, status } = parsed.data;
+    const { name, code, description, startDate, endDate, budgetAmount, status, managerId, memberIds } = parsed.data;
 
     // Build update data
     const updateData: any = {};
@@ -188,17 +218,64 @@ export async function PATCH(
     if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null;
     if (budgetAmount !== undefined) updateData.budgetAmount = budgetAmount || 0;
     if (status !== undefined) updateData.status = status;
+    if (managerId !== undefined) updateData.managerId = managerId || null;
+
+    // Update members if provided
+    if (memberIds !== undefined) {
+      // Delete existing members and create new ones
+      await prisma.projectMember.deleteMany({
+        where: { projectId: id },
+      });
+
+      if (memberIds.length > 0) {
+        await prisma.projectMember.createMany({
+          data: memberIds.map(userId => ({
+            projectId: id,
+            userId,
+            role: 'MEMBER',
+          })),
+        });
+      }
+    }
 
     const project = await prisma.project.update({
       where: { id },
       data: updateData,
+      include: {
+        members: {
+          select: {
+            id: true,
+            userId: true,
+            role: true,
+          },
+        },
+      },
     });
+
+    // Get manager and members info
+    const userIds = [
+      ...(project.managerId ? [project.managerId] : []),
+      ...project.members.map(m => m.userId),
+    ];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true, avatar: true },
+    });
+    const userMap = new Map(users.map(u => [u.id, u]));
+
+    const manager = project.managerId ? userMap.get(project.managerId) : null;
+    const membersWithInfo = project.members.map(m => ({
+      ...m,
+      user: userMap.get(m.userId),
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
         ...project,
         budgetAmount: project.budgetAmount ? Number(project.budgetAmount) : 0,
+        manager,
+        members: membersWithInfo,
       },
     });
   } catch (error) {

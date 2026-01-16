@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, ChevronLeft, ChevronRight, FileText, Download, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, FileText, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -381,6 +381,10 @@ export function TransactionsList() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <CardTitle>거래 목록</CardTitle>
             <div className="flex gap-2">
+              <Button variant="outline" onClick={() => router.push('/dashboard/transactions/import')}>
+                <Upload className="w-4 h-4 mr-2" />
+                가져오기
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline">

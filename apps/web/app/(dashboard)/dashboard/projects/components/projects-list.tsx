@@ -10,6 +10,8 @@ import {
   TrendingUp,
   Wallet,
   FolderOpen,
+  User,
+  Filter,
 } from 'lucide-react';
 import {
   Card,
@@ -28,6 +30,14 @@ import { useDebounce } from '@countin/hooks';
 import { ProjectModal } from './project-modal';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
 
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  role: string;
+}
+
 interface Project {
   id: string;
   name: string;
@@ -42,6 +52,9 @@ interface Project {
   spentAmount: number;
   remainingAmount: number;
   progress: number;
+  managerId?: string | null;
+  manager?: Member | null;
+  members?: { userId: string; role: string; user?: Member }[];
   _count: {
     transactions: number;
   };
@@ -82,6 +95,7 @@ export function ProjectsList() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [myOnly, setMyOnly] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
 
   // Modal states
@@ -98,6 +112,9 @@ export function ProjectsList() {
       if (statusFilter && statusFilter !== 'all') {
         params.append('status', statusFilter);
       }
+      if (myOnly) {
+        params.append('myOnly', 'true');
+      }
 
       const response = await fetch(`/api/projects?${params}`);
       const data = await response.json();
@@ -110,7 +127,7 @@ export function ProjectsList() {
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, myOnly]);
 
   useEffect(() => {
     fetchProjects();
@@ -232,15 +249,25 @@ export function ProjectsList() {
             </TabsList>
           </Tabs>
 
-          {/* Search */}
-          <div className="relative mt-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="프로젝트명, 코드, 설명으로 검색..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
+          {/* Search and Filter */}
+          <div className="flex gap-2 mt-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="프로젝트명, 코드, 설명으로 검색..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Button
+              variant={myOnly ? 'default' : 'outline'}
+              onClick={() => setMyOnly(!myOnly)}
+              className="shrink-0"
+            >
+              <User className="w-4 h-4 mr-2" />
+              내 프로젝트만
+            </Button>
           </div>
         </CardHeader>
 
@@ -319,6 +346,31 @@ export function ProjectsList() {
                       <p className="text-sm text-slate-500 line-clamp-2 mb-3">
                         {project.description}
                       </p>
+                    )}
+
+                    {/* Manager */}
+                    {project.manager && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                          {project.manager.avatar ? (
+                            <img
+                              src={project.manager.avatar}
+                              alt={project.manager.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <User className="w-3.5 h-3.5 text-slate-500" />
+                          )}
+                        </div>
+                        <span className="text-sm text-slate-600 truncate">
+                          {project.manager.name}
+                        </span>
+                        {project.members && project.members.length > 0 && (
+                          <span className="text-xs text-slate-400">
+                            +{project.members.length}
+                          </span>
+                        )}
+                      </div>
                     )}
 
                     {/* Date Range */}

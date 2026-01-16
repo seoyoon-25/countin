@@ -13,6 +13,8 @@ import {
   Save,
   ArrowLeft,
   Loader2,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import {
   Card,
@@ -28,6 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from '@countin/ui';
 import { formatCurrency } from '@countin/utils';
 
@@ -220,12 +227,35 @@ function DraggableItem({
   );
 }
 
+interface AIGeneratedItem {
+  category: string;
+  name: string;
+  amount: number;
+  description: string;
+  calculation: string;
+}
+
+interface AIGenerationResult {
+  items: AIGeneratedItem[];
+  totalIncome: number;
+  totalExpense: number;
+  summary: string;
+}
+
 export function BudgetForm({ budget, isEdit }: BudgetFormProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
+
+  // AI Generation states
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiProjectName, setAiProjectName] = useState('');
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiTotalBudget, setAiTotalBudget] = useState('');
+  const [isAIGenerating, setIsAIGenerating] = useState(false);
+  const [aiResult, setAiResult] = useState<AIGenerationResult | null>(null);
 
   const currentYear = new Date().getFullYear();
 
@@ -299,6 +329,82 @@ export function BudgetForm({ budget, isEdit }: BudgetFormProps) {
         move(currentIndex, index);
       }
     });
+  };
+
+  const handleAIGenerate = async () => {
+    if (!aiProjectName.trim()) {
+      alert('사업명을 입력해주세요');
+      return;
+    }
+
+    setIsAIGenerating(true);
+    setAiResult(null);
+
+    try {
+      const response = await fetch('/api/ai/budget-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: aiProjectName,
+          projectDescription: aiDescription,
+          totalBudget: aiTotalBudget ? Number(aiTotalBudget) : undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setAiResult(data.data);
+      } else {
+        alert(data.error?.message || 'AI 예산 생성에 실패했습니다');
+      }
+    } catch (error) {
+      alert('서버 오류가 발생했습니다');
+    } finally {
+      setIsAIGenerating(false);
+    }
+  };
+
+  const handleApplyAIResult = () => {
+    if (!aiResult) return;
+
+    // Map AI result items to budget items
+    const newItems = aiResult.items.map((item, index) => {
+      // Determine category based on item category
+      const isIncome = item.category === '수입';
+      const categoryPrefix = isIncome ? 'INCOME' : 'EXPENSE';
+
+      // Try to find matching category
+      let category = `${categoryPrefix}_기타${isIncome ? '수입' : '지출'}`;
+
+      // Match with available categories
+      const matchedCat = CATEGORY_OPTIONS.find(
+        (c) =>
+          c.value.startsWith(categoryPrefix) &&
+          (item.name.includes(c.label) || c.label.includes(item.name.split(' ')[0]))
+      );
+      if (matchedCat) {
+        category = matchedCat.value;
+      }
+
+      return {
+        accountId: null,
+        category,
+        plannedAmount: item.amount,
+        description: `${item.name}: ${item.calculation}`,
+        sortOrder: fields.length + index,
+      };
+    });
+
+    // Append all new items
+    newItems.forEach((item) => append(item));
+
+    // Close modal and reset
+    setShowAIModal(false);
+    setAiProjectName('');
+    setAiDescription('');
+    setAiTotalBudget('');
+    setAiResult(null);
   };
 
   const onSubmit = async (data: BudgetFormData) => {
@@ -460,10 +566,22 @@ export function BudgetForm({ budget, isEdit }: BudgetFormProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>예산 항목</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={handleAddItem}>
-              <Plus className="w-4 h-4 mr-2" />
-              항목 추가
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAIModal(true)}
+                className="text-violet-600 border-violet-200 hover:bg-violet-50"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI로 예산 생성
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={handleAddItem}>
+                <Plus className="w-4 h-4 mr-2" />
+                항목 추가
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {fields.length === 0 ? (
@@ -546,6 +664,131 @@ export function BudgetForm({ budget, isEdit }: BudgetFormProps) {
           </Button>
         </div>
       </form>
+
+      {/* AI Generation Modal */}
+      <Dialog open={showAIModal} onOpenChange={setShowAIModal}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-violet-500" />
+              AI로 예산 자동 생성
+            </DialogTitle>
+          </DialogHeader>
+
+          {!aiResult ? (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>사업명 *</Label>
+                <Input
+                  value={aiProjectName}
+                  onChange={(e) => setAiProjectName(e.target.value)}
+                  placeholder="예: 2024년 청소년 교육 프로그램"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>사업 설명</Label>
+                <Textarea
+                  value={aiDescription}
+                  onChange={(e) => setAiDescription(e.target.value)}
+                  placeholder="사업에 대한 간단한 설명을 입력하세요"
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>총 예산 규모 (선택)</Label>
+                <Input
+                  type="number"
+                  value={aiTotalBudget}
+                  onChange={(e) => setAiTotalBudget(e.target.value)}
+                  placeholder="예: 50000000"
+                />
+                <p className="text-xs text-slate-500">입력하지 않으면 AI가 적절한 규모를 추천합니다</p>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAIModal(false)}>
+                  취소
+                </Button>
+                <Button
+                  onClick={handleAIGenerate}
+                  disabled={isAIGenerating}
+                  className="bg-violet-600 hover:bg-violet-700"
+                >
+                  {isAIGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      예산 생성
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-violet-50 rounded-lg border border-violet-100">
+                <p className="text-sm text-violet-700">{aiResult.summary}</p>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {aiResult.items.map((item, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 rounded-lg border ${
+                      item.category === '수입'
+                        ? 'bg-emerald-50 border-emerald-100'
+                        : 'bg-rose-50 border-rose-100'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          item.category === '수입'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-rose-100 text-rose-700'
+                        }`}>
+                          {item.category}
+                        </span>
+                        <p className="font-medium mt-1">{item.name}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{item.calculation}</p>
+                      </div>
+                      <span className="font-semibold">{formatCurrency(item.amount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-3 border-t">
+                <div className="text-center p-3 bg-emerald-50 rounded-lg">
+                  <p className="text-xs text-emerald-600">총 수입</p>
+                  <p className="text-lg font-bold text-emerald-700">
+                    {formatCurrency(aiResult.totalIncome)}
+                  </p>
+                </div>
+                <div className="text-center p-3 bg-rose-50 rounded-lg">
+                  <p className="text-xs text-rose-600">총 지출</p>
+                  <p className="text-lg font-bold text-rose-700">
+                    {formatCurrency(aiResult.totalExpense)}
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAiResult(null)}>
+                  다시 생성
+                </Button>
+                <Button onClick={handleApplyAIResult} className="bg-violet-600 hover:bg-violet-700">
+                  예산에 적용
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

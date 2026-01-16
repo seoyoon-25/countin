@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const includeAll = searchParams.get('includeAll') === 'true';
+    const myOnly = searchParams.get('myOnly') === 'true';
 
     const where: any = { tenantId };
 
@@ -46,6 +47,15 @@ export async function GET(request: Request) {
       where.status = { in: ['PLANNING', 'ACTIVE'] };
     } else if (status && status !== 'all') {
       where.status = status;
+    }
+
+    // Filter by current user's projects (as manager or member)
+    if (myOnly) {
+      const userId = session.user.id;
+      where.OR = [
+        { managerId: userId },
+        { members: { some: { userId } } },
+      ];
     }
 
     const projects = await prisma.project.findMany({
@@ -63,8 +73,26 @@ export async function GET(request: Request) {
             amount: true,
           },
         },
+        members: {
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
       },
     });
+
+    // Get manager info for all projects
+    const managerIds = projects.map(p => p.managerId).filter(Boolean) as string[];
+    const memberIds = projects.flatMap(p => p.members.map(m => m.userId));
+    const allUserIds = [...new Set([...managerIds, ...memberIds])];
+
+    const users = await prisma.user.findMany({
+      where: { id: { in: allUserIds } },
+      select: { id: true, name: true, email: true, avatar: true },
+    });
+
+    const userMap = new Map(users.map(u => [u.id, u]));
 
     // Calculate spent amount for each project
     const projectsWithStats = projects.map((p) => {
@@ -75,7 +103,16 @@ export async function GET(request: Request) {
         .filter((t) => t.type === 'EXPENSE')
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
-      const { transactions, ...projectData } = p;
+      const { transactions, members, ...projectData } = p;
+
+      // Get manager info
+      const manager = p.managerId ? userMap.get(p.managerId) : null;
+
+      // Get members info
+      const membersInfo = members.map(m => ({
+        ...m,
+        user: userMap.get(m.userId),
+      }));
 
       return {
         ...projectData,
@@ -87,6 +124,8 @@ export async function GET(request: Request) {
         progress: p.budgetAmount && Number(p.budgetAmount) > 0
           ? Math.min(100, Math.round((expense / Number(p.budgetAmount)) * 100))
           : 0,
+        manager,
+        members: membersInfo,
       };
     });
 
@@ -118,6 +157,8 @@ const createProjectSchema = z.object({
   endDate: z.string().optional().nullable(),
   budgetAmount: z.number().min(0, '예산은 0 이상이어야 합니다').optional().nullable(),
   status: z.enum(['PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional(),
+  managerId: z.string().optional().nullable(),
+  memberIds: z.array(z.string()).optional(),
 });
 
 export async function POST(request: Request) {
@@ -168,7 +209,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, code, description, startDate, endDate, budgetAmount, status } = parsed.data;
+    const { name, code, description, startDate, endDate, budgetAmount, status, managerId, memberIds } = parsed.data;
 
     const project = await prisma.project.create({
       data: {
@@ -180,14 +221,36 @@ export async function POST(request: Request) {
         endDate: endDate ? new Date(endDate) : null,
         budgetAmount: budgetAmount || 0,
         status: status || 'PLANNING',
+        managerId: managerId || null,
+        members: memberIds && memberIds.length > 0
+          ? {
+              create: memberIds.map(userId => ({
+                userId,
+                role: 'MEMBER',
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        members: true,
       },
     });
+
+    // Get manager info
+    let manager = null;
+    if (project.managerId) {
+      manager = await prisma.user.findUnique({
+        where: { id: project.managerId },
+        select: { id: true, name: true, email: true, avatar: true },
+      });
+    }
 
     return NextResponse.json({
       success: true,
       data: {
         ...project,
         budgetAmount: project.budgetAmount ? Number(project.budgetAmount) : 0,
+        manager,
       },
     });
   } catch (error) {

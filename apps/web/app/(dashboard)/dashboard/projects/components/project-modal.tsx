@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Trash2 } from 'lucide-react';
+import { Trash2, X, User, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,16 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  Badge,
 } from '@countin/ui';
+
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  role: string;
+}
 
 interface Project {
   id: string;
@@ -36,6 +45,9 @@ interface Project {
   spentAmount: number;
   remainingAmount: number;
   progress: number;
+  managerId?: string | null;
+  manager?: Member | null;
+  members?: { userId: string; role: string; user?: Member }[];
   _count: {
     transactions: number;
   };
@@ -69,6 +81,7 @@ const projectSchema = z.object({
     })
     .optional(),
   status: z.enum(['PLANNING', 'ACTIVE', 'COMPLETED', 'CANCELLED']),
+  managerId: z.string().optional(),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -82,8 +95,32 @@ export function ProjectModal({
 }: ProjectModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
 
   const isEditing = !!project;
+
+  // Fetch members
+  useEffect(() => {
+    const fetchMembers = async () => {
+      try {
+        const response = await fetch('/api/members');
+        const data = await response.json();
+        if (data.success) {
+          setMembers(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch members:', error);
+      } finally {
+        setMembersLoaded(true);
+      }
+    };
+
+    if (open && !membersLoaded) {
+      fetchMembers();
+    }
+  }, [open, membersLoaded]);
 
   const {
     register,
@@ -102,10 +139,12 @@ export function ProjectModal({
       endDate: '',
       budgetAmount: '',
       status: 'PLANNING',
+      managerId: '',
     },
   });
 
   const selectedStatus = watch('status');
+  const selectedManagerId = watch('managerId');
 
   // Reset form when project changes or modal opens
   useEffect(() => {
@@ -123,7 +162,11 @@ export function ProjectModal({
             : '',
           budgetAmount: project.budgetAmount ? project.budgetAmount.toString() : '',
           status: project.status,
+          managerId: project.managerId || '',
         });
+        // Set member IDs
+        const memberIds = project.members?.map(m => m.userId) || [];
+        setSelectedMemberIds(memberIds);
       } else {
         reset({
           name: '',
@@ -133,7 +176,9 @@ export function ProjectModal({
           endDate: '',
           budgetAmount: '',
           status: 'PLANNING',
+          managerId: '',
         });
+        setSelectedMemberIds([]);
       }
       setError(null);
     }
@@ -152,6 +197,8 @@ export function ProjectModal({
         endDate: data.endDate || null,
         budgetAmount: data.budgetAmount ? Number(data.budgetAmount) : 0,
         status: data.status,
+        managerId: data.managerId || null,
+        memberIds: selectedMemberIds,
       };
 
       const url = isEditing
@@ -177,6 +224,14 @@ export function ProjectModal({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMemberIds(prev =>
+      prev.includes(memberId)
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
   };
 
   const handleDelete = () => {
@@ -314,6 +369,84 @@ export function ProjectModal({
                 </Button>
               ))}
             </div>
+          </div>
+
+          {/* Manager */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <User className="w-4 h-4" />
+              주 담당자
+            </Label>
+            <Select
+              value={selectedManagerId || ''}
+              onValueChange={(value) => setValue('managerId', value || '')}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="담당자 선택 (선택사항)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">선택 안함</SelectItem>
+                {members.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.name} ({member.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Members */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              부 담당자 (선택)
+            </Label>
+            <div className="border rounded-lg p-3 max-h-32 overflow-y-auto space-y-2">
+              {members.length === 0 ? (
+                <p className="text-sm text-slate-500 text-center py-2">
+                  멤버가 없습니다
+                </p>
+              ) : (
+                members
+                  .filter(m => m.id !== selectedManagerId)
+                  .map((member) => (
+                    <label
+                      key={member.id}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedMemberIds.includes(member.id)}
+                        onChange={() => toggleMember(member.id)}
+                        className="rounded border-slate-300"
+                      />
+                      <span className="text-sm">{member.name}</span>
+                      <span className="text-xs text-slate-400">{member.email}</span>
+                    </label>
+                  ))
+              )}
+            </div>
+            {selectedMemberIds.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {selectedMemberIds.map((id) => {
+                  const member = members.find(m => m.id === id);
+                  if (!member) return null;
+                  return (
+                    <Badge
+                      key={id}
+                      variant="secondary"
+                      className="text-xs flex items-center gap-1"
+                    >
+                      {member.name}
+                      <X
+                        className="w-3 h-3 cursor-pointer hover:text-red-500"
+                        onClick={() => toggleMember(id)}
+                      />
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
