@@ -14,9 +14,10 @@ module.exports = {
   apps: [
     {
       name: 'countin',
-      script: 'node_modules/.bin/next',
+      script: 'pnpm',
       args: 'start',
       cwd: '/var/www/countin/apps/web',
+      interpreter: 'none',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
